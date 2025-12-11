@@ -1,0 +1,97 @@
+/* ---------------------- */
+/* BASE MENU ITEM STYLING */
+/* ---------------------- */
+.menu-item-text,
+.menu-item-icon {
+  color: #000000; /* light theme default for inactive */
+}
+
+.dark .menu-item-text,
+.dark .menu-item-icon {
+  color: #ffffff; /* dark theme default for inactive */
+}
+
+/* ------------------------------ */
+/* ACTIVE (LIGHT THEME) */
+.menu-item-active-light {
+  background-color: #003300 !important;
+  position: relative;
+  color: #ffffff !important; /* white for active */
+}
+
+.menu-item-active-light::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 60%;
+  width: 3px;
+  background-color: #009900 !important; /* left border */
+  border-radius: 2px;
+}
+
+/* ACTIVE (DARK THEME) */
+.dark .menu-item-active-dark {
+  background-color: #001a00 !important;
+  position: relative;
+  color: #ffffff !important; /* white for active in dark theme */
+}
+
+.dark .menu-item-active-dark::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 60%;
+  width: 3px;
+  background-color: #00cc00 !important; /* left border */
+  border-radius: 2px;
+}
+
+/* ------------------------------ */
+/* HOVER (LIGHT THEME) */
+.menu-item-hover:hover {
+  background-color: #003300 !important;
+  color: #ffffff !important; /* white for hovered item */
+}
+
+.menu-item-hover:hover::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 60%;
+  width: 3px;
+  background-color: #009900 !important;
+  border-radius: 2px;
+}
+
+/* HOVER (DARK THEME) */
+.dark .menu-item-hover:hover {
+  background-color: #001a00 !important;
+  color: #ffffff !important; /* white for hovered item */
+}
+
+.dark .menu-item-hover:hover::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 60%;
+  width: 3px;
+  background-color: #00cc00 !important;
+  border-radius: 2px;
+}
+
+/* Text + Icons */
+/* .menu-item-text {
+  color: var(--foreground) !important; 
+}
+
+.menu-item-icon {
+  color: var(--foreground) !important; 
+} */

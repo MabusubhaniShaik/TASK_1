@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as _MainLayoutRouteImport } from './routes/__MainLayout'
+import { Route as _AuthLayoutRouteImport } from './routes/__AuthLayout'
 import { Route as _MainLayoutIndexRouteImport } from './routes/__MainLayout/index'
 import { Route as _MainLayoutSettingsRouteImport } from './routes/__MainLayout/settings'
 import { Route as _MainLayoutServiceRouteImport } from './routes/__MainLayout/service'
@@ -19,9 +20,14 @@ import { Route as _MainLayoutInventoryRouteImport } from './routes/__MainLayout/
 import { Route as _MainLayoutFinanceRouteImport } from './routes/__MainLayout/finance'
 import { Route as _MainLayoutDashboardRouteImport } from './routes/__MainLayout/dashboard'
 import { Route as _MainLayoutCustomersRouteImport } from './routes/__MainLayout/customers'
+import { Route as _AuthLayoutSigninRouteImport } from './routes/__AuthLayout/signin'
 
 const _MainLayoutRoute = _MainLayoutRouteImport.update({
   id: '/__MainLayout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const _AuthLayoutRoute = _AuthLayoutRouteImport.update({
+  id: '/__AuthLayout',
   getParentRoute: () => rootRouteImport,
 } as any)
 const _MainLayoutIndexRoute = _MainLayoutIndexRouteImport.update({
@@ -69,8 +75,14 @@ const _MainLayoutCustomersRoute = _MainLayoutCustomersRouteImport.update({
   path: '/customers',
   getParentRoute: () => _MainLayoutRoute,
 } as any)
+const _AuthLayoutSigninRoute = _AuthLayoutSigninRouteImport.update({
+  id: '/signin',
+  path: '/signin',
+  getParentRoute: () => _AuthLayoutRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
+  '/signin': typeof _AuthLayoutSigninRoute
   '/customers': typeof _MainLayoutCustomersRoute
   '/dashboard': typeof _MainLayoutDashboardRoute
   '/finance': typeof _MainLayoutFinanceRoute
@@ -82,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/': typeof _MainLayoutIndexRoute
 }
 export interface FileRoutesByTo {
+  '/signin': typeof _AuthLayoutSigninRoute
   '/customers': typeof _MainLayoutCustomersRoute
   '/dashboard': typeof _MainLayoutDashboardRoute
   '/finance': typeof _MainLayoutFinanceRoute
@@ -94,7 +107,9 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/__AuthLayout': typeof _AuthLayoutRouteWithChildren
   '/__MainLayout': typeof _MainLayoutRouteWithChildren
+  '/__AuthLayout/signin': typeof _AuthLayoutSigninRoute
   '/__MainLayout/customers': typeof _MainLayoutCustomersRoute
   '/__MainLayout/dashboard': typeof _MainLayoutDashboardRoute
   '/__MainLayout/finance': typeof _MainLayoutFinanceRoute
@@ -108,6 +123,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/signin'
     | '/customers'
     | '/dashboard'
     | '/finance'
@@ -119,6 +135,7 @@ export interface FileRouteTypes {
     | '/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/signin'
     | '/customers'
     | '/dashboard'
     | '/finance'
@@ -130,7 +147,9 @@ export interface FileRouteTypes {
     | '/'
   id:
     | '__root__'
+    | '/__AuthLayout'
     | '/__MainLayout'
+    | '/__AuthLayout/signin'
     | '/__MainLayout/customers'
     | '/__MainLayout/dashboard'
     | '/__MainLayout/finance'
@@ -143,6 +162,7 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  _AuthLayoutRoute: typeof _AuthLayoutRouteWithChildren
   _MainLayoutRoute: typeof _MainLayoutRouteWithChildren
 }
 
@@ -153,6 +173,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: ''
       preLoaderRoute: typeof _MainLayoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/__AuthLayout': {
+      id: '/__AuthLayout'
+      path: ''
+      fullPath: ''
+      preLoaderRoute: typeof _AuthLayoutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/__MainLayout/': {
@@ -218,8 +245,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof _MainLayoutCustomersRouteImport
       parentRoute: typeof _MainLayoutRoute
     }
+    '/__AuthLayout/signin': {
+      id: '/__AuthLayout/signin'
+      path: '/signin'
+      fullPath: '/signin'
+      preLoaderRoute: typeof _AuthLayoutSigninRouteImport
+      parentRoute: typeof _AuthLayoutRoute
+    }
   }
 }
+
+interface _AuthLayoutRouteChildren {
+  _AuthLayoutSigninRoute: typeof _AuthLayoutSigninRoute
+}
+
+const _AuthLayoutRouteChildren: _AuthLayoutRouteChildren = {
+  _AuthLayoutSigninRoute: _AuthLayoutSigninRoute,
+}
+
+const _AuthLayoutRouteWithChildren = _AuthLayoutRoute._addFileChildren(
+  _AuthLayoutRouteChildren,
+)
 
 interface _MainLayoutRouteChildren {
   _MainLayoutCustomersRoute: typeof _MainLayoutCustomersRoute
@@ -250,6 +296,7 @@ const _MainLayoutRouteWithChildren = _MainLayoutRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
+  _AuthLayoutRoute: _AuthLayoutRouteWithChildren,
   _MainLayoutRoute: _MainLayoutRouteWithChildren,
 }
 export const routeTree = rootRouteImport

@@ -15,7 +15,36 @@ import { Badge } from "@/components/ui/badge";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 
+import { useNavigate } from "@tanstack/react-router";
+import { apiService } from "@/services/api.service";
+
 export default function HeaderLayout() {
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      const accessToken = sessionStorage.getItem("access_token");
+
+      if (accessToken) {
+        await apiService({
+          url: "/auth/revoke",
+          method: "POST",
+          payload: {
+            access_token: accessToken,
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Logout failed:", error);
+    } finally {
+      // Clear session storage
+      sessionStorage.clear();
+
+      // Redirect to signin
+      navigate({ to: "/signin", replace: true });
+    }
+  };
+
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background px-6">
       <div className="flex items-center gap-3">
@@ -38,7 +67,6 @@ export default function HeaderLayout() {
           <Search className="h-5 w-5" />
         </Button>
 
-        {/* Theme Toggle Button */}
         <ThemeToggle />
 
         <Button variant="ghost" size="icon" className="relative">
@@ -61,13 +89,17 @@ export default function HeaderLayout() {
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
+
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem>Profile</DropdownMenuItem>
             <DropdownMenuItem>Settings</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-red-600">
+            <DropdownMenuItem
+              className="text-red-600 cursor-pointer"
+              onClick={handleLogout}
+            >
               Log out
             </DropdownMenuItem>
           </DropdownMenuContent>

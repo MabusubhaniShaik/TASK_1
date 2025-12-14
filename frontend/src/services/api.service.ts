@@ -1,190 +1,227 @@
-// Frontend API Service - No NestJS dependencies
+// src/services/api.service.ts
+import axios from "axios";
+import type { AxiosRequestConfig, AxiosResponse, Method } from "axios";
 
-export interface ApiRequestConfig {
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+// Define types
+interface ApiRequestParams {
   url: string;
-  params?: Record<string, any>;
-  payload?: Record<string, any> | any;
+  method?: Method;
+  payload?: Record<string, any> | FormData;
+  query?: Record<string, any>;
   headers?: Record<string, string>;
+  requireAuth?: boolean;
   timeout?: number;
 }
 
-export class ApiService {
-  private baseURL: string =
-    import.meta.env.VITE_BACKEND_ENDPOINT || "http://localhost:3000/api";
-
-  /**
-   * Execute API request with explicit method argument (RAW RESPONSE)
-   */
-  async executeRequest<T = any>(
-    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
-    url: string,
-    payload?: Record<string, any> | any,
-    params?: Record<string, any>,
-    headers?: Record<string, string>,
-    timeout?: number
-  ): Promise<T> {
-    try {
-      const fullURL = this.buildURL(url, params);
-
-      // Create abort controller for timeout
-      const abortController = new AbortController();
-      const timeoutValue = timeout || 30000;
-      const timeoutId = setTimeout(() => abortController.abort(), timeoutValue);
-
-      const requestOptions: RequestInit = {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          ...headers,
-        },
-        credentials: "include",
-        mode: "cors",
-        signal: abortController.signal, // Use the controller's signal
-      };
-
-      if (method !== "GET" && payload) {
-        requestOptions.body = JSON.stringify(payload);
-      }
-
-      console.log(" Making API request:", {
-        method,
-        url: fullURL,
-        hasPayload: !!payload,
-        headers: requestOptions.headers,
-      });
-
-      const response = await fetch(fullURL, requestOptions);
-      clearTimeout(timeoutId); // Clear timeout if request completes
-
-      console.log(" Response received:", {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-        url: response.url,
-      });
-
-      // ✔ Return backend response AS-IS
-      return await this.handleResponse<T>(response);
-    } catch (error: any) {
-      console.error(" Request error:", error);
-
-      // ✔ Throw raw error (no custom wrapper)
-      throw error;
-    }
-  }
-
-  /**
-   * GET request
-   */
-  async get<T = any>(
-    url: string,
-    params?: Record<string, any>,
-    headers?: Record<string, string>
-  ): Promise<T> {
-    return this.executeRequest<T>("GET", url, undefined, params, headers);
-  }
-
-  /**
-   * POST request
-   */
-  async post<T = any>(
-    url: string,
-    payload?: Record<string, any>,
-    params?: Record<string, any>,
-    headers?: Record<string, string>
-  ): Promise<T> {
-    return this.executeRequest<T>("POST", url, payload, params, headers);
-  }
-
-  /**
-   * PUT request
-   */
-  async put<T = any>(
-    url: string,
-    payload?: Record<string, any>,
-    params?: Record<string, any>,
-    headers?: Record<string, string>
-  ): Promise<T> {
-    return this.executeRequest<T>("PUT", url, payload, params, headers);
-  }
-
-  /**
-   * PATCH request
-   */
-  async patch<T = any>(
-    url: string,
-    payload?: Record<string, any>,
-    params?: Record<string, any>,
-    headers?: Record<string, string>
-  ): Promise<T> {
-    return this.executeRequest<T>("PATCH", url, payload, params, headers);
-  }
-
-  /**
-   * DELETE request
-   */
-  async delete<T = any>(
-    url: string,
-    params?: Record<string, any>,
-    headers?: Record<string, string>
-  ): Promise<T> {
-    return this.executeRequest<T>("DELETE", url, undefined, params, headers);
-  }
-
-  /**
-   * Build full URL with query parameters
-   */
-  private buildURL(url: string, params?: Record<string, any>): string {
-    const fullURL = url.startsWith("http") ? url : `${this.baseURL}${url}`;
-
-    if (!params) return fullURL;
-
-    const queryParams = new URLSearchParams();
-
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        if (Array.isArray(value)) {
-          value.forEach((item) => queryParams.append(key, item.toString()));
-        } else {
-          queryParams.append(key, value.toString());
-        }
-      }
-    });
-
-    const queryString = queryParams.toString();
-    return queryString ? `${fullURL}?${queryString}` : fullURL;
-  }
-
-  /**
-   * Handle response based on content type (RAW)
-   */
-  private async handleResponse<T>(response: Response): Promise<T> {
-    const contentType = response.headers.get("content-type");
-
-    if (contentType?.includes("application/json")) {
-      return (await response.json()) as T;
-    } else if (contentType?.includes("text/")) {
-      return (await response.text()) as T;
-    } else {
-      return (await response.blob()) as T;
-    }
-  }
-
-  /**
-   * Set base URL
-   */
-  setBaseURL(url: string): void {
-    this.baseURL = url;
-  }
-
-  /**
-   * Get base URL
-   */
-  getBaseURL(): string {
-    return this.baseURL;
-  }
+interface ApiError {
+  message: string;
+  status?: number;
+  data?: any;
+  isNetworkError?: boolean;
 }
 
-// Export singleton
-export const apiService = new ApiService();
+// Base URL configuration
+const getBaseURL = () => {
+  // You can switch between different environments
+  const env = "development";
+
+  switch (env) {
+    case "development":
+    default:
+      return "http://localhost:9009/";
+  }
+};
+
+// Create axios instance with better configuration
+const axiosInstance = axios.create({
+  baseURL: getBaseURL(),
+  timeout: 30000, // 30 seconds
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+// Request interceptor for adding auth token
+axiosInstance.interceptors.request.use(
+  (config) => {
+    // Get token from localStorage
+    const token = localStorage.getItem("access_token");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    // If it's FormData, remove Content-Type header to let browser set it
+    if (config.data instanceof FormData) {
+      delete config.headers["Content-Type"];
+    }
+
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor for handling common errors
+axiosInstance.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // Handle network errors
+    if (error.code === "ERR_NETWORK") {
+      console.error("Network Error:", {
+        message: "Cannot connect to server",
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+      });
+
+      // You can trigger a global network error handler here
+      if (typeof window !== "undefined") {
+        // Show global network error notification
+        const event = new CustomEvent("network-error", {
+          detail: {
+            message: "Cannot connect to server. Please check your connection.",
+          },
+        });
+        window.dispatchEvent(event);
+      }
+    }
+
+    // Handle 401 Unauthorized
+    if (error.response?.status === 401) {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("user");
+
+      // Redirect to login if not already there
+      if (!window.location.pathname.includes("/signin")) {
+        window.location.href = "/signin";
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+/**
+ * Common Service to handle all CRUD operations
+ * @returns Promise with response data
+ */
+export const apiService = async ({
+  url,
+  method = "GET",
+  payload = {},
+  query = {},
+  headers = {},
+  requireAuth = true,
+  timeout = 30000,
+}: ApiRequestParams): Promise<any> => {
+  try {
+    const config: AxiosRequestConfig = {
+      url,
+      method: method.toUpperCase() as Method,
+      headers: {
+        ...(requireAuth ? {} : {}), // Auth header added by interceptor
+        ...headers,
+      },
+      params: query,
+      data: payload,
+      timeout,
+    };
+
+    console.log(`API Request: ${method} ${url}`, {
+      query,
+      payload: payload instanceof FormData ? "[FormData]" : payload,
+    });
+
+    const response: AxiosResponse = await axiosInstance(config);
+
+    console.log(`API Response: ${response.status} ${url}`, response.data);
+
+    return response.data;
+  } catch (error: any) {
+    console.error("API Request Error:", {
+      url,
+      method,
+      error: error?.response?.data || error.message,
+      status: error?.response?.status,
+      code: error?.code,
+    });
+
+    // Create a structured error object
+    const apiError: ApiError = {
+      message:
+        error.response?.data?.message ||
+        error.message ||
+        "An unknown error occurred",
+      status: error.response?.status,
+      data: error.response?.data,
+      isNetworkError:
+        error.code === "ERR_NETWORK" || error.message === "Network Error",
+    };
+
+    // Throw the structured error
+    throw apiError;
+  }
+};
+
+// Convenience methods for CRUD operations
+export const api = {
+  // GET request
+  get: (
+    url: string,
+    query?: Record<string, any>,
+    headers?: Record<string, string>
+  ) => apiService({ url, method: "GET", query, headers }),
+
+  // POST request
+  post: (
+    url: string,
+    payload?: Record<string, any>,
+    query?: Record<string, any>,
+    headers?: Record<string, string>
+  ) => apiService({ url, method: "POST", payload, query, headers }),
+
+  // PUT request
+  put: (
+    url: string,
+    payload?: Record<string, any>,
+    query?: Record<string, any>,
+    headers?: Record<string, string>
+  ) => apiService({ url, method: "PUT", payload, query, headers }),
+
+  // PATCH request
+  patch: (
+    url: string,
+    payload?: Record<string, any>,
+    query?: Record<string, any>,
+    headers?: Record<string, string>
+  ) => apiService({ url, method: "PATCH", payload, query, headers }),
+
+  // DELETE request
+  delete: (
+    url: string,
+    query?: Record<string, any>,
+    headers?: Record<string, string>
+  ) => apiService({ url, method: "DELETE", query, headers }),
+
+  // Upload file (with FormData)
+  upload: (url: string, formData: FormData, headers?: Record<string, string>) =>
+    apiService({
+      url,
+      method: "POST",
+      payload: formData,
+      headers: { ...headers, "Content-Type": "multipart/form-data" },
+    }),
+
+  // Set auth token manually if needed
+  setAuthToken: (token: string) => {
+    localStorage.setItem("access_token", token);
+  },
+
+  // Clear auth token
+  clearAuthToken: () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("user");
+  },
+};

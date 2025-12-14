@@ -1,0 +1,29 @@
+[
+  {
+    "id": 1,
+    "role_code": "ADM",
+    "name": "Admin",
+    "description": "Administrator role with full system access",
+    "is_active": true,
+    "created_by": "system",
+    "updated_by": "system"
+  },
+  {
+    "id": 2,
+    "role_code": "DLR",
+    "name": "Dealer",
+    "description": "Dealer role with access to product and sales modules",
+    "is_active": true,
+    "created_by": "system",
+    "updated_by": "system"
+  },
+  {
+    "id": 3,
+    "role_code": "CUS",
+    "name": "Customer",
+    "description": "Customer role with access to personal orders, service requests, and profile management",
+    "is_active": true,
+    "created_by": "system",
+    "updated_by": "system"
+  }
+]

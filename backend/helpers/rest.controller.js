@@ -1,281 +1,209 @@
-// src/controllers/rest.controller.js
-const mongoose = require("mongoose");
-const ResponseFormatter = require("../utils/response.formatter");
-
 class RestController {
-  constructor(model, options = {}) {
+  constructor(model) {
     this.Model = model;
-    this.options = {
-      preSave: options.preSave || ((d) => d),
-      postSave: options.postSave || ((d) => d),
-      softDelete: options.softDelete || false,
-    };
+    this.bindMethods();
   }
 
+  // === Bind class methods to instance ===
+  bindMethods() {
+    [
+      "create",
+      "findAll",
+      "handleGet",
+      "getById",
+      "update",
+      "delete",
+      "buildIdQuery",
+      "buildQuery",
+      "preSave",
+      "postSave",
+    ].forEach((method) => {
+      if (this[method]) this[method] = this[method].bind(this);
+    });
+  }
+
+  // === Hooks (can override per controller) ===
+  async preSave(payload, mode, ctx) {
+    return payload;
+  }
+
+  async postSave(doc, mode, ctx) {
+    return doc;
+  }
+
+  // === Build ID query dynamically ===
   buildIdQuery(id) {
-    if (mongoose.Types.ObjectId.isValid(id) && /^[0-9a-fA-F]{24}$/.test(id)) {
-      return { _id: id };
-    }
-    const numericId = parseInt(id);
-    return !isNaN(numericId) ? { id: numericId } : { id: id };
+    if (!id) return {};
+    const orConditions = [{ id }, { _id: id }];
+
+    // Add string fields from query params dynamically
+    Object.keys(this.Model.schema.paths).forEach((key) => {
+      if (this.Model.schema.paths[key].instance === "String") {
+        orConditions.push({ [key]: id });
+      }
+    });
+
+    return { $or: orConditions };
   }
 
+  // === Build dynamic query from request query params ===
   buildQuery(filters = {}) {
-    const { page, limit, sort, fields, ...query } = filters;
-    if (this.options.softDelete) query.deleted_at = null;
+    const query = {};
+
+    for (const [key, value] of Object.entries(filters)) {
+      if (value === "") continue;
+
+      if (key === "id" || key === "_id") {
+        Object.assign(query, this.buildIdQuery(value));
+        continue;
+      }
+
+      const pathInfo = this.Model.schema.paths[key];
+      if (!pathInfo) continue;
+
+      switch ((pathInfo.instance || "").toLowerCase()) {
+        case "string":
+          query[key] = { $regex: value, $options: "i" };
+          break;
+        case "boolean":
+          query[key] = value === "true";
+          break;
+        case "number":
+        case "date":
+          query[key] = isNaN(Number(value)) ? undefined : Number(value);
+          break;
+        default:
+          query[key] = value;
+      }
+    }
+
     return query;
   }
 
-  async create(req, res) {
-    try {
-      const data = await this.options.preSave(req.body, "create", req);
-      const document = new this.Model({
-        ...data,
-        created_by: req.user?.id || "system",
-        updated_by: req.user?.id || "system",
-      });
-      await document.save();
-      const finalDoc = await this.options.postSave(document, "create", req);
+  // === CRUD OPERATIONS ===
+  async handleGet(req, res) {
+    const id = req.params.id || req.query.id || req.query._id;
+    return id ? this.getById(req, res) : this.findAll(req, res);
+  }
 
-      // Use dynamic success message
-      res
-        .status(201)
-        .json(ResponseFormatter.createSuccess(this.Model, finalDoc));
-    } catch (error) {
-      res
-        .status(400)
-        .json(
-          ResponseFormatter.error(
-            error.name === "ValidationError"
-              ? ResponseFormatter.messages.VALIDATION_ERROR
-              : error.message,
-            error.errors
-          )
-        );
+  async getById(req, res) {
+    try {
+      const id = req.params.id || req.query.id || req.query._id;
+      if (!id) return res.status(400).json({ error: "ID parameter required" });
+
+      const query = this.buildIdQuery(id);
+      const doc = await this.Model.findOne(query);
+      if (!doc)
+        return res
+          .status(404)
+          .json({ error: `Record with ID "${id}" not found` });
+
+      res.status(200).json(doc);
+    } catch (err) {
+      this.handleError(res, err, "GET_BY_ID");
     }
   }
 
   async findAll(req, res) {
     try {
-      const {
-        page,
-        limit,
-        sort = "-created_date",
-        fields,
-        ...filters
-      } = req.query;
+      const { page, limit, sort = "-createdAt", ...filters } = req.query;
       const query = this.buildQuery(filters);
 
-      let queryBuilder = this.Model.find(query);
-      if (sort) queryBuilder = queryBuilder.sort(sort);
-      if (fields)
-        queryBuilder = queryBuilder.select(fields.split(",").join(" "));
+      let qb = this.Model.find(query).sort(sort);
 
-      // Check if BOTH page AND limit parameters exist (even if empty)
-      const hasPageParam = page !== undefined;
-      const hasLimitParam = limit !== undefined;
-
-      if (hasPageParam && hasLimitParam) {
-        // Try to parse both values
-        const pageNum = parseInt(page);
-        const limitNum = parseInt(limit);
-
-        // If either is invalid, treat as no pagination
-        if (isNaN(pageNum) || pageNum < 1 || isNaN(limitNum) || limitNum < 1) {
-          const documents = await queryBuilder.lean();
-          return res
-            .status(200)
-            .json(
-              ResponseFormatter.success(
-                ResponseFormatter.messages.FETCH_ALL_SUCCESS(
-                  ResponseFormatter.getResourceName(this.Model)
-                ),
-                documents,
-                documents.length
-              )
-            );
-        }
-
-        // Valid pagination - show pagination
+      if (page && limit) {
+        const pageNum = Math.max(1, Number(page));
+        const limitNum = Math.min(Math.max(1, Number(limit)), 100);
         const skip = (pageNum - 1) * limitNum;
 
-        const [total, documents] = await Promise.all([
+        const [total, data] = await Promise.all([
           this.Model.countDocuments(query),
-          queryBuilder.skip(skip).limit(limitNum).lean(),
+          qb.skip(skip).limit(limitNum).lean(),
         ]);
 
-        const pagination = ResponseFormatter.paginate(total, pageNum, limitNum);
         return res
           .status(200)
-          .json(
-            ResponseFormatter.fetchAllSuccess(this.Model, documents, pagination)
-          );
+          .json({ total, page: pageNum, limit: limitNum, data });
       }
 
-      // WITHOUT pagination (missing either page or limit)
-      const documents = await queryBuilder.lean();
-
-      res
-        .status(200)
-        .json(
-          ResponseFormatter.success(
-            ResponseFormatter.messages.FETCH_ALL_SUCCESS(
-              ResponseFormatter.getResourceName(this.Model)
-            ),
-            documents,
-            documents.length
-          )
-        );
-    } catch (error) {
-      res.status(500).json(ResponseFormatter.error(error.message));
+      const data = await qb.lean();
+      res.status(200).json(data);
+    } catch (err) {
+      this.handleError(res, err, "FIND_ALL");
     }
   }
 
-  async findOne(req, res) {
+  async create(req, res) {
     try {
-      const { id } = req.params;
-      const { fields } = req.query;
-      const query = this.buildIdQuery(id);
-      if (this.options.softDelete) query.deleted_at = null;
+      const ctx = { req, res, user: req.user };
+      const payload = await this.preSave(req.body, "create", ctx);
 
-      let document = this.Model.findOne(query);
-      if (fields) document = document.select(fields.split(",").join(" "));
+      const doc = await this.Model.create({
+        ...payload,
+        created_by: ctx.user?.id || "system",
+        updated_by: ctx.user?.id || "system",
+      });
 
-      const result = await document;
-      if (!result) {
-        return res
-          .status(404)
-          .json(
-            ResponseFormatter.error(
-              ResponseFormatter.messages.NOT_FOUND(
-                ResponseFormatter.getResourceName(this.Model)
-              )
-            )
-          );
-      }
-
-      // Use dynamic success message
-      res
-        .status(200)
-        .json(ResponseFormatter.fetchOneSuccess(this.Model, result));
-    } catch (error) {
-      res.status(500).json(ResponseFormatter.error(error.message));
+      const finalDoc = await this.postSave(doc, "create", ctx);
+      res.status(201).json(finalDoc);
+    } catch (err) {
+      this.handleError(res, err, "CREATE", 400);
     }
   }
 
   async update(req, res) {
     try {
-      const { id } = req.params;
-      const query = this.buildIdQuery(id);
-      if (this.options.softDelete) query.deleted_at = null;
+      const ctx = { req, res, user: req.user };
+      const id = req.params.id || req.query.id || req.query._id;
 
-      const document = await this.Model.findOne(query);
-      if (!document) {
+      const doc = await this.Model.findOne(this.buildIdQuery(id));
+      if (!doc)
         return res
           .status(404)
-          .json(
-            ResponseFormatter.error(
-              ResponseFormatter.messages.NOT_FOUND(
-                ResponseFormatter.getResourceName(this.Model)
-              )
-            )
-          );
-      }
+          .json({ error: `Record with ID "${id}" not found` });
 
-      const updateData = await this.options.preSave(req.body, "update", req);
-      Object.assign(document, updateData);
-      document.updated_by = req.user?.id || "system";
+      const payload = await this.preSave(req.body, "update", ctx);
+      Object.assign(doc, payload, {
+        updated_by: ctx.user?.id || "system",
+        updated_at: new Date(),
+      });
+      await doc.save();
 
-      await document.save();
-      const finalDoc = await this.options.postSave(document, "update", req);
-
-      // Use dynamic success message
-      res
-        .status(200)
-        .json(ResponseFormatter.updateSuccess(this.Model, finalDoc));
-    } catch (error) {
-      res
-        .status(400)
-        .json(
-          ResponseFormatter.error(
-            error.name === "ValidationError"
-              ? ResponseFormatter.messages.VALIDATION_ERROR
-              : error.message,
-            error.errors
-          )
-        );
+      const finalDoc = await this.postSave(doc, "update", ctx);
+      res.status(200).json(finalDoc);
+    } catch (err) {
+      this.handleError(res, err, "UPDATE", 400);
     }
   }
 
   async delete(req, res) {
     try {
-      const { id } = req.params;
-      const query = this.buildIdQuery(id);
-      const permanentDelete = req.query.permanent === "true";
+      const id = req.params.id || req.query.id || req.query._id;
 
-      if (this.options.softDelete && !permanentDelete) {
-        const result = await this.Model.findOneAndUpdate(
-          query,
-          {
-            deleted_at: new Date(),
-            deleted_by: req.user?.id || "system",
-          },
-          { new: true }
-        );
+      const doc = await this.Model.findOneAndDelete(this.buildIdQuery(id));
+      if (!doc) return res.status(404).json({ error: "Record not found" });
 
-        if (!result) {
-          return res
-            .status(404)
-            .json(
-              ResponseFormatter.error(
-                ResponseFormatter.messages.NOT_FOUND(
-                  ResponseFormatter.getResourceName(this.Model)
-                )
-              )
-            );
-        }
-
-        return res
-          .status(200)
-          .json(
-            ResponseFormatter.success(
-              ResponseFormatter.messages.SOFT_DELETE_SUCCESS(
-                ResponseFormatter.getResourceName(this.Model)
-              ),
-              result
-            )
-          );
-      }
-
-      const result = await this.Model.findOneAndDelete(query);
-      if (!result) {
-        return res
-          .status(404)
-          .json(
-            ResponseFormatter.error(
-              ResponseFormatter.messages.NOT_FOUND(
-                ResponseFormatter.getResourceName(this.Model)
-              )
-            )
-          );
-      }
-
-      // Use dynamic success message
-      res
-        .status(200)
-        .json(ResponseFormatter.deleteSuccess(this.Model, { deletedId: id }));
-    } catch (error) {
-      res.status(500).json(ResponseFormatter.error(error.message));
+      res.status(200).json(doc);
+    } catch (err) {
+      this.handleError(res, err, "DELETE");
     }
   }
 
+  // === ERROR HANDLER ===
+  handleError(res, err, op, status = 500) {
+    console.error(`Error in ${op}:`, err);
+    res.status(status).json({ error: err.message || "Unexpected error" });
+  }
+
+  // === Public interface ===
   getMethods() {
     return {
-      create: this.create.bind(this),
-      findAll: this.findAll.bind(this),
-      findOne: this.findOne.bind(this),
-      update: this.update.bind(this),
-      delete: this.delete.bind(this),
+      create: this.create,
+      findAll: this.findAll,
+      findOne: this.handleGet,
+      getById: this.getById,
+      update: this.update,
+      delete: this.delete,
     };
   }
 }

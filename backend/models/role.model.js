@@ -1,53 +1,70 @@
 // src/models/role.model.js
 const mongoose = require("mongoose");
-
 const { Schema, model } = mongoose;
 
-const roleSchema = new Schema(
+// Main Role Schema
+const RoleSchema = new Schema(
   {
+    // Primary identifier
     id: {
       type: Number,
       required: true,
       unique: true,
-      index: true,
     },
-    name: {
+
+    // Role code for quick reference (e.g., "ADMIN", "MANAGER")
+    role_code: {
       type: String,
-      required: [true, "Role name is required"],
+      required: true,
       unique: true,
       trim: true,
-      minlength: 2,
-      maxlength: 50,
+      uppercase: true,
     },
+
+    // Display name
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    // Description
     description: {
       type: String,
+      required: true,
       trim: true,
-      maxlength: 200,
-      default: null,
     },
+
+    // Status flag
+    is_active: {
+      type: Boolean,
+      default: true,
+    },
+
+    // Audit fields
     created_by: {
       type: String,
       required: true,
       trim: true,
     },
+
     updated_by: {
       type: String,
-      required: true,
       trim: true,
     },
   },
   {
-    collection: "roles",
+    collection: "role",
     timestamps: {
       createdAt: "created_date",
       updatedAt: "updated_date",
     },
-    versionKey: false, // Removes __v field completely
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
+    versionKey: false,
   }
 );
 
-const Role = model("Role", roleSchema);
+// Index for frequently queried fields
+RoleSchema.index({ role_code: 1, is_active: 1 });
+RoleSchema.index({ id: 1, is_active: 1 });
 
-module.exports = Role;
+module.exports = model("Role", RoleSchema);
